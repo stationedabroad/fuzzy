@@ -18,47 +18,63 @@ var err error
 
 var filenames []string
 
-var g *gocui.Gui
+// var g *gocui.Gui
+var fuzzyGui GuiSetup
+
+type GuiSetup struct{
+	g *gocui.Gui
+	filenames []string
+	err error
+}
+
+func NewFuzzyGui(mode gocui.OutputMode) GuiSetup {
+	var gui GuiSetup
+	gui.g, gui.err = gocui.NewGui(mode)
+	gui.g.Cursor = true
+	gui.g.Mouse = false
+	gui.g.SetManagerFunc(layout)
+	// defer gui.g.Close()
+	return gui
+}
+
+func (g GuiSetup) SetSearchFiles(file string) {
+	if g.err != nil {
+		return
+	}
+	var filenamesByte []byte
+	filenamesByte, g.err = ioutil.ReadFile(file)
+	g.filenames = strings.Split(string(filenamesByte), "\n")
+}
+
+func (g GuiSetup) BindKey(viewname string, key interface{}, mod gocui.Modifier, handler func(*gocui.Gui, *gocui.View) error) {
+	if g.err != nil {
+		return
+	}
+	g.err = g.g.SetKeybinding(viewname, key, mod, handler)
+}
 
 func main() {
 	filenamesBytes, err = ioutil.ReadFile("../testdata/ue4_filenames.txt")
 	if err != nil {
 		panic(err)
 	}
-
 	filenames = strings.Split(string(filenamesBytes), "\n")
 
-	g, err = gocui.NewGui(gocui.OutputNormal)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer g.Close()
+	fuzzyGui = NewFuzzyGui(gocui.OutputNormal)
+	defer fuzzyGui.g.Close()
+	fuzzyGui.SetSearchFiles("../testdata/ue4_filenames.txt")
 
-	g.Cursor = true
-	g.Mouse = false
+	fuzzyGui.BindKey("", gocui.KeyCtrlC, gocui.ModNone, quit)
+	fuzzyGui.BindKey("finder", gocui.KeyArrowRight, gocui.ModNone, switchToMainView)
+	fuzzyGui.BindKey("main", gocui.KeyArrowLeft, gocui.ModNone, switchToSideView)
+	fuzzyGui.BindKey("", gocui.KeyArrowDown, gocui.ModNone, cursorDown)
+	fuzzyGui.BindKey("", gocui.KeyArrowUp, gocui.ModNone, cursorUp)
 
-	g.SetManagerFunc(layout)
-
-	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
-		log.Panicln(err)
-	}
-
-	if err := g.SetKeybinding("finder", gocui.KeyArrowRight, gocui.ModNone, switchToMainView); err != nil {
-		log.Panicln(err)
+	if fuzzyGui.err != nil {
+		log.Panicln(fuzzyGui.err)
 	}
 
-	if err := g.SetKeybinding("main", gocui.KeyArrowLeft, gocui.ModNone, switchToSideView); err != nil {
-		log.Panicln(err)
-	}
-
-	if err := g.SetKeybinding("", gocui.KeyArrowDown, gocui.ModNone, cursorDown); err != nil {
-		log.Panicln(err)
-	}
-	if err := g.SetKeybinding("", gocui.KeyArrowUp, gocui.ModNone, cursorUp); err != nil {
-		log.Panicln(err)
-	}
-
-	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
+	if err := fuzzyGui.g.MainLoop(); err != nil && err != gocui.ErrQuit {
 		log.Panicln(err)
 	}
 }
@@ -151,8 +167,8 @@ func finder(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
 	switch {
 	case ch != 0 && mod == 0:
 		v.EditWrite(ch)
-		g.Update(func(gui *gocui.Gui) error {
-			results, err := g.View("results")
+		fuzzyGui.g.Update(func(gui *gocui.Gui) error {
+			results, err := fuzzyGui.g.View("results")
 			if err != nil {
 				// handle error
 			}
@@ -178,8 +194,8 @@ func finder(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
 		v.EditWrite(' ')
 	case key == gocui.KeyBackspace || key == gocui.KeyBackspace2:
 		v.EditDelete(true)
-		g.Update(func(gui *gocui.Gui) error {
-			results, err := g.View("results")
+		fuzzyGui.g.Update(func(gui *gocui.Gui) error {
+			results, err := fuzzyGui.g.View("results")
 			if err != nil {
 				// handle error
 			}
@@ -202,8 +218,8 @@ func finder(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
 		})
 	case key == gocui.KeyDelete:
 		v.EditDelete(false)
-		g.Update(func(gui *gocui.Gui) error {
-			results, err := g.View("results")
+		fuzzyGui.g.Update(func(gui *gocui.Gui) error {
+			results, err := fuzzyGui.g.View("results")
 			if err != nil {
 				// handle error
 			}
